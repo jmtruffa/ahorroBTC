@@ -107,21 +107,28 @@ La lista que necesitábamos estaba dentro de una lista. Por eso la quitamos con 
 
 En el medio uso as.Date porque los nombres de cada elemento de la lista, que eran las fechas, están en character y las necesito como fechas para que las pueda comparar luego en el left_join.
 
-Listo. ya tenemos la serie de precios de Bitcoin.
+Listo. ya tenemos la serie de precios de Bitcoin. Y ya que estamos, vamos a graficarla.
 
 ```{r}
 precios
+library(dplyr)
+library(ggplot2)
+precios %>% ggplot(aes(x =  Fecha, y = Precio)) + geom_line()
 ```
-ahora lo que tenemos que hacer es juntarla con la serie original de fechas en las que supuestamente habíamos comprado BTC.
+Llamamos primero a dos librerías que necesitamos.
+Dplyr que nos da los pipes "%>%
+ggplot2 que nos da los gráficos
+
+Ahora lo que tenemos que hacer es juntarla con la serie original de fechas en las que supuestamente habíamos comprado BTC.
 Esto estaba en el dataframe (df de ahora en más) llamado fechas.
 
 Entonces tenemos que usar un join. Cuál? Vamos a tomar que las fechas que sí queremos, están en `fechas` y las que queremos filtrar y traer están en precios. Entonces lo que usaremos es un `left_join`
 Lef_Join lo que hace es mantiene todas las ocurrencias del df de la izquierda y le agrega las columnas del df de la derecha que matchean.
 Se especifica por qué columan y listo.
-Cómo está en la librería dplyr, primero la cargamos.
+Usamos lef_join que viene en la librería Dplyr que cargamos más arriba.
 
 ```{r}
-library(dplyr)
+
 fechas = left_join(fechas, precios) 
 fechas
 ```
