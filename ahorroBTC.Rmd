@@ -1,0 +1,214 @@
+---
+title: "Ahorro en BTC"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+Qué hubiese pasado si cada día 1 del mes, de los últimos, digamos, 2 años, hubiesemos comprado el equivalente a 50usd en bitcoin.
+
+Vamos a hacer el ejercicio para ver cuánto tendríamos ahora y de paso practicamos un poco de R.
+
+Primero vamos a crear el array con las fechas del primer día de cada mes y lo vamos a convertir en un dataframe así luego le podemos joinear los valores respectivos.
+
+Le cambiamos el nombre para que la columna se llame Fecha.
+```{r}
+fechas = as.data.frame(seq(as.Date("2019/4/1"), by = "month", length.out = 24))
+colnames(fechas) = 'Fecha'
+```
+Ahora vamos a tener que bajar los datos del BTC de algún lado.
+Veamos qué encontramos en la red. (en lo posible una API)
+
+Parece que acá: https://www.coindesk.com/coindesk-api contramos un candidato.
+Miramos un poco las especificaciones o algún ejemplo que nos dé una idea.
+
+'Sample Request: https://api.coindesk.com/v1/bpi/historical/close.json?start=2013-09-01&end=2013-09-05 Sample JSON Response:'
+
+Vamos a utilizar dos librerías:
+- httr: para hacer las consultas
+- jsonlite: para manejar el json que nos devuelve
+
+la url a la que tiene que pegarle es: `https://api.coindesk.com/v1/bpi/historical/close.json`
+y los parámetros que le va a pasar (a través del campo query de httr) son: `start=2013-09-01&end=2013-09-05` aunque modificados con las fechas que queremos.
+
+Primero cargamos las librerías y luego la variable que contiene la url y los parámetros.
+Luego usamos la función GET que es la que se encarga de pegar contra esa API y darnos la respuesta (del tipo response) que vamos a alojar en una variable llamada apiResponse
+
+```{r}
+library(httr)
+library(jsonlite)
+
+url = 'https://api.coindesk.com/v1/bpi/historical/close.json'
+fechaInicio = min(fechas$Fecha)
+fechaFin = max(fechas$Fecha)
+
+apiResponse = GET(url, query = list(start = fechaInicio, end = fechaFin))
+```
+
+Listo, ya tenemos la respuesta de la API.
+Lo primero que miramos será el código de respuesta. Si es un 200, al menos es que nos entendió y quizás nos devuelve algo que sirva.
+
+La respuesta, alojada en la variable `apiResponse` es una lista con varios componentes.
+
+```{r}
+names(apiResponse)
+```
+Ahi vemos los nombres de cada uno. Y cada uno además puede tener más cosas dentro. Por ejemplo `headers` es otra lista con 13 elementos. 
+Osea que tenemos listas que contienen listas. Divino!
+
+Vamos a ver el `status_code` a ver qué dice:
+
+```{r}
+apiResponse$status_code
+```
+Genial! Nos arrojó 200. Qué quiere decir?
+Bueno, en [Códigos HTTP de respuesta](https://restfulapi.net/http-status-codes/) hay un link que nos dice qué es cada código de error.
+
+Entonces ahora vamos a buscar la información en cuestión.
+La información que un servidor a través de una API devuelve la incluye dentro del "campo" **content**
+Vemos que es el 6to campo.
+
+Vamos a ver qué tiene adentro
+vamos a tomar las primeras 100 posiciones
+
+```{r}
+head(apiResponse$content, 100)
+```
+Ufff qué demonios es esto???
+
+> las API devuelven la información en formato RAW o crudo. Entonces tenemos que traducirlo a otro formato.
+
+Bueno, acá es donde entra en juego JSON. Vamos a usar la librería jsonlite para hacer esto.
+Primero vamos a traducir de RAW a Char con una función base de R.
+
+```{r}
+contenido = rawToChar(apiResponse$content)
+```
+
+Listo. Mirémoslo. 
+
+```{r}
+contenido
+```
+bueno, ahora tiene otro color.
+Sí, tiene caraccterés poco frecuentes (backslash) que separan los campos. Long story Short, con la librería jsonlite vamos a traducir esto, que aunque no lo parezca, es un json (dejo link a json para que vea qué es. [link](https://www.json.org/json-en.html))
+
+```{r}
+listaPrecios = fromJSON(contenido)
+precios = as.data.frame(matrix(unlist(listaPrecios$bpi)))
+precios = cbind(precios, as.Date(names(listaPrecios[[1]])))
+colnames(precios) = c('Precio', 'Fecha')
+
+
+```
+
+La lista que necesitábamos estaba dentro de una lista. Por eso la quitamos con unlist. Pero eso sólo nos trajo los datos y no los nombres de los datos. Por eso, en la línea siguiente tomo los nombres de cada uno de los datos (`listaPrecios[[1]]`) y lo agrego como una columna al dataFrame creado con la función `cbind`.
+
+En el medio uso as.Date porque los nombres de cada elemento de la lista, que eran las fechas, están en character y las necesito como fechas para que las pueda comparar luego en el left_join.
+
+Listo. ya tenemos la serie de precios de Bitcoin.
+
+```{r}
+precios
+```
+ahora lo que tenemos que hacer es juntarla con la serie original de fechas en las que supuestamente habíamos comprado BTC.
+Esto estaba en el dataframe (df de ahora en más) llamado fechas.
+
+Entonces tenemos que usar un join. Cuál? Vamos a tomar que las fechas que sí queremos, están en `fechas` y las que queremos filtrar y traer están en precios. Entonces lo que usaremos es un `left_join`
+Lef_Join lo que hace es mantiene todas las ocurrencias del df de la izquierda y le agrega las columnas del df de la derecha que matchean.
+Se especifica por qué columan y listo.
+Cómo está en la librería dplyr, primero la cargamos.
+
+```{r}
+library(dplyr)
+fechas = left_join(fechas, precios) 
+fechas
+```
+Acá hago algo que técnicamente podría ser un tanto controversial pero que a los fines de simplificar puede funcionar.
+Asigno al df `fechas` el resultado de una modificación sobre sí mismo. De esta manera me ahorro el hecho de tener que usar **otro** nombre de variable. Es riesgoso porque piso lo anterior. *Úsese con cuidado*
+
+Bueno, ya casi estamos.
+Ya tenemos el df con las fechas que queríamos y con el valor del BTC.
+Qué nos falta?  
+Crear una columna que haga la división de usd 50, *que es lo que ibamos a invertir por mes* por el valor del BTC y nos dirá cuantos BTC comprabamos en cada fecha.
+
+Eso lo vamos a hacer con una función de dplyr que se llama `mutate` y vamos a usar las pipes para que vean como el flujo de la información es muy simple de entender.
+Lo vamos a asignar, como hicimos antes, al mismo df así nos queda el mismo nombre de df pero con una columna más
+
+```{r}
+fechas = fechas %>% 
+  mutate(btcComprados = 50 / Precio)
+fechas
+```
+Bueno, ya tenemos la columan que nos dice cuantos se compraron por mes.
+La sumatoria de esta columna nos dirá cuantos BTC tendríamos.
+
+Vamos a calcularlo.
+
+```{r}
+
+tenenciaBTC = fechas %>% 
+  summarise(tenenciaBTC = sum(btcComprados))
+```
+
+Entonces tenemos `r tenenciaBTC` BTC en cartera.
+
+Solo necesitamos el precio del BTC actual y multiplicarlo por la cantidad que tenemos.
+
+Vamos a reutilizar parte de lo que hicimos más arriba pegándole a la API de Coinbase para que nos dé el precio actual del BTC.
+Solo que ahora le pegaremos a otra API que es: 'https://api.coindesk.com/v1/bpi/currentprice.json' que nos da el precio actual.
+
+```{r}
+urlPrecio = 'https://api.coindesk.com/v1/bpi/currentprice.json'
+
+
+precioBTC = GET(urlPrecio)
+```
+
+Ya sabemos que el precio debe venir en la variable content de nuestra respuesta.
+Vamos a buscarlo. Y ya sabemos que está en raw y hay que traducirlo.
+
+```{r}
+BTC = fromJSON(rawToChar(precioBTC$content))
+precioActual = BTC$bpi$USD$rate
+precioActual
+```
+
+En esta línea: `BTC = fromJSON(rawToChar(precioBTC$content))` hicimos todo junto lo que hacíamos antes.
+Partamos del centro del paréntesis. 
+Tomamos el content que es la respuesta de la API que nos interesa.
+La pasamos de RAW -> Char (caracter)
+Y luego, como sabemos que nos devolvió un JSON, lo pasamos de JSON a un objeto que nos sirva. En esta caso nos devuelve una lista.
+
+Y abajo lo que hacemos es ir a buscar UN dato dentro de la lista (que es una lista de listas)
+Entonces cada vez que usamos el signo `$` lo que estamos diciendo es: Dame de la variable que tenes a la izquierda del $, el campo que te anoto a la derecha. y Así puedo anidar más adentro tambien.
+Cuando se usa Rstudio, la ventaja es que mientras tipeamos, RStudio nos va dando una lista desplegable de las listas que están dentro de las listas.
+
+Bueno, lo único que nos resta es convertir ese valor que es un caracter a numérico
+
+```{r}
+typeof(precioActual)
+```
+Entonces hacemos
+
+```{r}
+precioActual = as.numeric(gsub(",", "", precioActual))
+```
+
+as.numeric convierte a numero un caracter. Pero como el precio contenía comas, se las tenemos que sacar. Para eso usamos gsub en donde le decimos que la "," la convierta en "" o un character nulo. De esa manera los borra.
+
+Qué precio actual nos devolvió?
+
+```{r}
+precioActual
+```
+Listo, lo único que necesitamos hacer ahora es multiplicar el precio actual por la cantidad de BTC que compramos.
+
+```{r}
+precioActual * tenenciaBTC
+```
+
+Como se puede ver, ahorrando 50 dólares en 24 meses convertimos (24 * 50) 1200 USD en un poco más de 7500.
+
+Espero que haya servido.
