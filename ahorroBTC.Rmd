@@ -12,7 +12,7 @@ Vamos a hacer el ejercicio para ver cuánto tendríamos ahora y de paso practica
 
 Primero vamos a crear el array con las fechas del primer día de cada mes y lo vamos a convertir en un dataframe así luego le podemos joinear los valores respectivos.
 
-Le cambiamos el nombre para que la columna se llame Fecha.
+Le cambiamos el nombre para que la columna se llame Fecha y coincida más adelante.
 ```{r}
 fechas = as.data.frame(seq(as.Date("2019/4/1"), by = "month", length.out = 24))
 colnames(fechas) = 'Fecha'
